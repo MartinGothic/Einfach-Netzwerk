@@ -1,0 +1,24 @@
+# Generated builds, reports and local QA data
+dist/
+ui-qa/
+live-qa/
+host-qa/
+protocol-qa/
+github-upload-*/
+*.exe
+*.dll
+*.pdb
+*.zip
+*.rar
+*.json
+*.log
+*.txt
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tmp
+*.bak
+*.user
+*.suo
