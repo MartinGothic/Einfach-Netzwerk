@@ -2,7 +2,9 @@
 
 **Deutsch** · [English](#english)
 
-**Download 2.0.20:** [Windows EXE](https://github.com/MartinGothic/Einfach-Netzwerk/raw/refs/heads/main/downloads/v2.0.20/Einfach-Netzwerk-2.0.20.exe) · [Programm-ZIP / Application ZIP](https://github.com/MartinGothic/Einfach-Netzwerk/raw/refs/heads/main/downloads/v2.0.20/Einfach-Netzwerk-2.0.20.zip) · [Quellcode / Source code](https://github.com/MartinGothic/Einfach-Netzwerk/raw/refs/heads/main/downloads/v2.0.20/Einfach-Netzwerk-Quellcode-2.0.20.zip)
+**[Neueste Version / Latest release](https://github.com/MartinGothic/Einfach-Netzwerk/releases/latest)**
+
+**Download 2.0.20:** [Windows EXE](https://github.com/MartinGothic/Einfach-Netzwerk/releases/download/v2.0.20/Einfach-Netzwerk-2.0.20.exe) · [Programm-ZIP / Application ZIP](https://github.com/MartinGothic/Einfach-Netzwerk/releases/download/v2.0.20/Einfach-Netzwerk-2.0.20.zip) · [Quellcode / Source code](https://github.com/MartinGothic/Einfach-Netzwerk/releases/download/v2.0.20/Einfach-Netzwerk-Quellcode-2.0.20.zip)
 
 ## Deutsch
 
