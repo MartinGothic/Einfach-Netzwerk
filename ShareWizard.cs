@@ -10,7 +10,7 @@ namespace EinfachNetzwerk
     internal sealed class WizardSelection
     {
         internal string FolderPath, ShareName, UserName, Password;
-        internal bool Guest = true, AllowWrite = true, AllowDrive, AllowGuest, AdvancedRepair = true, PrepareReceiver = true;
+        internal bool Guest = true, AllowWrite, AllowDrive, AllowGuest, AdvancedRepair = true, PrepareReceiver = true;
         internal NetworkItem Network;
     }
 
@@ -32,6 +32,12 @@ namespace EinfachNetzwerk
         private ComboBox disks, network;
         private RadioButton chooseFolder, chooseDisk, guest, withPassword;
         private CheckBox driveConsent, guestConsent, writable, autoRepair, prepareReceiver;
+        private Button generatePassword, revealPassword, copyPassword;
+        private Label rightsHint, passwordFeedback;
+        private bool passwordVisible;
+        private Action<string> passwordClipboard = delegate(string value) { Clipboard.SetText(value); };
+        private IDisposable passwordProtection;
+        private string protectedPassword;
         private bool receiverPreference = true;
         private Label operationPhase;
         private Label operationPercentage;
@@ -137,6 +143,7 @@ namespace EinfachNetzwerk
         }
         private void BuildPage()
         {
+            RefreshPasswordProtection(selected.Password);
             if (operationPresenter != null) { operationPresenter.Dispose(); operationPresenter = null; }
             operationPhase = operationPercentage = null;
             operationProgress = null;
@@ -148,6 +155,8 @@ namespace EinfachNetzwerk
             disks = network = null;
             guest = withPassword = chooseFolder = chooseDisk = null;
             driveConsent = guestConsent = writable = autoRepair = prepareReceiver = null;
+            generatePassword = revealPassword = copyPassword = null;
+            rightsHint = passwordFeedback = null;
             steps.Text = String.Format(I18n.T("Schritt {0} von 5  ·  {1}"), Math.Min(5, step + 1), I18n.T(new[] { "Auswahl", "Zugriff", "Heimnetz", "Überblick", "Verbinden" }[step]));
             back.Enabled = !working && step > 0 && step < 4;
             back.Visible = step < 4;
@@ -227,35 +236,104 @@ namespace EinfachNetzwerk
             withPassword = new RadioButton { Text = I18n.T("Mit Benutzername und Passwort"), AutoSize = true, Dock = DockStyle.Top, Checked = !selected.Guest, Margin = new Padding(0, 1, 0, 8), Font = new Font("Segoe UI", 11, FontStyle.Bold) };
             stack.Controls.Add(guest);
             stack.Controls.Add(withPassword);
+            rightsHint = TextLine(String.Empty, stack, false);
+            writable = RepairOption("Auch Bearbeiten und Löschen erlauben", stack, selected.AllowWrite, false);
+            writable.Margin = new Padding(0, 3, 0, 7);
             TableLayoutPanel account = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Top, ColumnCount = 2, Margin = Padding.Empty };
             account.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             account.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            account.Controls.Add(new Label { Text = I18n.T("Netzwerk-Benutzer"), AutoSize = true }, 0, 0);
-            account.Controls.Add(new Label { Text = I18n.T("Passwort (mindestens 8 Zeichen)"), AutoSize = true }, 1, 0);
+            Label accountUser = new Label { Text = I18n.T("Netzwerk-Benutzer"), AutoSize = true, Dock = DockStyle.Top, Margin = new Padding(0, 0, 10, 0) };
+            Label accountPassword = new Label { Text = I18n.T("Passwort (mindestens 8 Zeichen)"), AutoSize = true, Dock = DockStyle.Top, Margin = Padding.Empty };
+            account.Controls.Add(accountUser, 0, 0);
+            account.Controls.Add(accountPassword, 1, 0);
+            account.SizeChanged += delegate
+            {
+                int columnWidth = Math.Max(100, (account.ClientSize.Width - account.Padding.Horizontal) / 2);
+                accountUser.MaximumSize = new Size(Math.Max(100, columnWidth - accountUser.Margin.Horizontal), 0);
+                accountPassword.MaximumSize = new Size(columnWidth, 0);
+            };
             user = Input(String.IsNullOrEmpty(selected.UserName) ? "NetzwerkUser" : selected.UserName);
             secret = Input(selected.Password);
-            secret.UseSystemPasswordChar = true;
+            secret.Name = "NetworkPassword";
+            secret.UseSystemPasswordChar = !passwordVisible;
             user.Margin = new Padding(0, 4, 10, 7);
             account.Controls.Add(user, 0, 1);
             account.Controls.Add(secret, 1, 1);
+            FlowLayoutPanel passwordActions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, WrapContents = true, Margin = new Padding(0, 1, 0, 1) };
+            generatePassword = PasswordButton("Passwort erzeugen");
+            revealPassword = PasswordButton(passwordVisible ? "Passwort verbergen" : "Passwort anzeigen");
+            copyPassword = PasswordButton("Passwort kopieren");
+            passwordActions.Controls.AddRange(new Control[] { generatePassword, revealPassword, copyPassword });
+            account.Controls.Add(passwordActions, 0, 2);
+            account.SetColumnSpan(passwordActions, 2);
+            passwordFeedback = TextLine("Eigenes Passwort eingeben oder freiwillig erzeugen lassen.", account, false);
+            account.SetCellPosition(passwordFeedback, new TableLayoutPanelCellPosition(0, 3));
+            account.SetColumnSpan(passwordFeedback, 2);
             stack.Controls.Add(account);
             guestConsent = new CheckBox { Text = I18n.T("Gastmodus auf diesem PC aktivieren"), AutoSize = true, Dock = DockStyle.Top, Checked = selected.AllowGuest, Margin = new Padding(0, 7, 0, 6) };
             stack.Controls.Add(guestConsent);
             Label explanation = TextLine(String.Empty, stack, false);
-            writable = new CheckBox { Text = I18n.T("Dateien auch bearbeiten und löschen erlauben"), AutoSize = true, Dock = DockStyle.Top, Checked = selected.AllowWrite, Margin = new Padding(0, 9, 0, 7) };
-            stack.Controls.Add(writable);
             TextLine("Im nächsten Schritt wählst du die vorbeugende Reparatur für diesen PC.", stack, false);
             Action update = delegate
             {
                 account.Visible = withPassword.Checked;
                 guestConsent.Visible = guest.Checked;
+                generatePassword.Enabled = !working && withPassword.Checked;
+                revealPassword.Enabled = !working && withPassword.Checked && secret.Text.Length > 0;
+                copyPassword.Enabled = !working && withPassword.Checked && secret.Text.Length > 0;
+                rightsHint.Text = I18n.T(writable.Checked
+                    ? "Bearbeiten und Löschen erlaubt. Für Nur lesen die Option unten deaktivieren."
+                    : "Nur lesen: Öffnen und Kopieren sind erlaubt. Möchtest du auch bearbeiten und löschen?");
                 explanation.Text = I18n.T(guest.Checked
                     ? "Ohne Passwort können Geräte im gewählten Heimnetz zugreifen. Dafür werden das Windows-Gastkonto und die eingehende SMB-Signaturpflicht dieses PCs angepasst. Manche Geräte verlangen trotzdem ein Passwort."
                     : "Das Programm richtet ein eigenes Netzwerk-Konto ein. Auf dem anderen Gerät verwendest du diesen Benutzer und dieses Passwort. Deine Windows-PIN wird nicht benötigt.");
             };
             guest.CheckedChanged += delegate { update(); };
             withPassword.CheckedChanged += delegate { update(); };
+            writable.CheckedChanged += delegate { update(); };
+            secret.TextChanged += delegate { selected.Password = secret.Text; RefreshPasswordProtection(selected.Password); passwordFeedback.Text = I18n.T("Eigenes Passwort eingeben oder freiwillig erzeugen lassen."); update(); };
+            generatePassword.Click += delegate
+            {
+                if (working || !withPassword.Checked) return;
+                try { secret.Text = NetworkPasswordGenerator.Create(); selected.Password = secret.Text; }
+                catch (System.Security.Cryptography.CryptographicException) { passwordFeedback.Text = I18n.T("Das Passwort konnte nicht erzeugt werden. Bitte ein eigenes Passwort eingeben."); }
+            };
+            revealPassword.Click += delegate
+            {
+                if (working || !withPassword.Checked) return;
+                passwordVisible = !passwordVisible;
+                secret.UseSystemPasswordChar = !passwordVisible;
+                revealPassword.Text = I18n.T(passwordVisible ? "Passwort verbergen" : "Passwort anzeigen");
+                FitPasswordButton(revealPassword);
+            };
+            copyPassword.Click += delegate
+            {
+                if (working || !withPassword.Checked || secret.Text.Length == 0) return;
+                try { passwordClipboard(secret.Text); passwordFeedback.Text = I18n.T("Passwort kopiert."); }
+                catch (System.Runtime.InteropServices.ExternalException) { passwordFeedback.Text = I18n.T("Das Passwort konnte nicht kopiert werden. Bitte erneut versuchen."); }
+            };
             update();
+        }
+        private static Button PasswordButton(string text)
+        {
+            Button button = Button(text, 175, false);
+            button.Height = 33;
+            button.Margin = new Padding(0, 0, 7, 4);
+            FitPasswordButton(button);
+            return button;
+        }
+        private static void FitPasswordButton(Button button)
+        {
+            button.Width = Math.Max(145, TextRenderer.MeasureText(button.Text, button.Font).Width + 25);
+        }
+        private void RefreshPasswordProtection(string value)
+        {
+            value = value ?? String.Empty;
+            if (String.Equals(protectedPassword, value, StringComparison.Ordinal)) return;
+            IDisposable previous = passwordProtection;
+            passwordProtection = String.IsNullOrEmpty(value) ? null : DiagnosticReports.Current.ProtectSecrets(value);
+            protectedPassword = value;
+            if (previous != null) previous.Dispose();
         }
         private void BuildNetwork(TableLayoutPanel stack)
         {
@@ -603,7 +681,7 @@ namespace EinfachNetzwerk
         }
         protected override void Dispose(bool disposing)
         {
-            if (disposing) { selected.Password = String.Empty; I18n.Changed -= LanguageChanged; if (operationPresenter != null) { operationPresenter.Dispose(); operationPresenter = null; } }
+            if (disposing) { selected.Password = String.Empty; RefreshPasswordProtection(String.Empty); I18n.Changed -= LanguageChanged; if (operationPresenter != null) { operationPresenter.Dispose(); operationPresenter = null; } }
             base.Dispose(disposing);
         }
         private sealed class DiskChoice

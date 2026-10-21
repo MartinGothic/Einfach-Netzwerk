@@ -29,7 +29,7 @@ namespace EinfachNetzwerk
         private static readonly List<Template> templates = new List<Template>();
         private static readonly ConditionalWeakTable<object, TextRecord> textRecords = new ConditionalWeakTable<object, TextRecord>();
         public static event EventHandler Changed;
-        static I18n() { AddInterface(); AddWizard(); AddDiagnostics(); AddRecovery(); AddGuestConnection(); AddSmbVerification(); AddOverview(); AddHome(); AddProgress(); AddExport(); AddRemoteAccess(); AddServiceHealth(); AddClientName(); AddDiscovery(); AddReceiver(); AddErrorFix(); AddErrorFixWorkflow(); AddResetNetwork(); AddResetWorkflow(); AddResetInventory(); AddProblems(); AddProblemHelp(); }
+        static I18n() { AddInterface(); AddWizard(); AddDiagnostics(); AddRecovery(); AddGuestConnection(); AddSmbVerification(); AddOverview(); AddHome(); AddProgress(); AddExport(); AddRemoteAccess(); AddServiceHealth(); AddClientName(); AddDiscovery(); AddReceiver(); AddErrorFix(); AddErrorFixWorkflow(); AddResetNetwork(); AddResetWorkflow(); AddResetInventory(); AddProblems(); AddProblemHelp(); AddWizardAccess(); AddConnectionSummary(); }
         public static string Language
         {
             get { return language; }

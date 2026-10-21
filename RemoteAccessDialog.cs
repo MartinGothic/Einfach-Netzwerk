@@ -58,6 +58,12 @@ namespace EinfachNetzwerk
         private ConnectionProof enumerationProof;
         private readonly ProblemHistory problemHistory = new ProblemHistory();
         private readonly Label problemNotice;
+        private readonly GroupBox connectionSummaryGroup;
+        private readonly TableLayoutPanel connectionSummaryGrid;
+        private readonly Label[] summaryHeadings, summaryValues;
+        private ConnectionSummarySnapshot connectionSummary, summaryBeforeOperation;
+        private string activeSummaryContext;
+        private bool fittingConnectionSummary;
 
         internal RemoteAccessDialog(WorkerResult localInventory, bool preview,
             Func<ShareRequest, Action<string>, Action<WorkProgress>, Task<WorkerResult>> execute)
@@ -206,6 +212,37 @@ namespace EinfachNetzwerk
             suggestionGrid.Controls.Add(repairQuestion, 0, 0); suggestionGrid.Controls.Add(suggestedRepair, 1, 0);
             repairSuggestion.Controls.Add(suggestionGrid); Add(stack, repairSuggestion);
 
+            connectionSummaryGroup = Group("Verbindung auf einen Blick", 178);
+            connectionSummaryGroup.Visible = false;
+            connectionSummaryGrid = Grid(2, 3);
+            // This measured card owns its content bounds. A hidden GroupBox
+            // can retain an earlier docked table height; its final table row
+            // then stretches and vertically centers text below the card.
+            connectionSummaryGrid.Dock = DockStyle.None;
+            connectionSummaryGrid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            connectionSummaryGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34));
+            connectionSummaryGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 66));
+            summaryHeadings = new Label[3]; summaryValues = new Label[3];
+            string[] summaryTitles = { "Dieser PC vorbereitet", "Anderer Computer erreichbar", "Ordnerzugriff bestätigt" };
+            for (int index = 0; index < summaryTitles.Length; index++)
+            {
+                connectionSummaryGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+                summaryHeadings[index] = FieldLabel(summaryTitles[index]);
+                summaryHeadings[index].Font = new Font(Font, FontStyle.Bold);
+                summaryValues[index] = FieldLabel(String.Empty);
+                summaryValues[index].AccessibleName = I18n.T(summaryTitles[index]);
+                summaryHeadings[index].Margin = new Padding(2, 6, 12, 6);
+                summaryValues[index].Margin = new Padding(2, 6, 2, 6);
+                connectionSummaryGrid.Controls.Add(summaryHeadings[index], 0, index);
+                connectionSummaryGrid.Controls.Add(summaryValues[index], 1, index);
+            }
+            connectionSummaryGroup.Controls.Add(connectionSummaryGrid);
+            connectionSummaryGroup.SizeChanged += delegate { FitConnectionSummary(); };
+            connectionSummaryGrid.SizeChanged += delegate { FitConnectionSummary(); };
+            Add(stack, connectionSummaryGroup);
+            connectionSummary = ConnectionSummaryEvidence.Unknown(String.Empty);
+            RenderConnectionSummary();
+
             resultGroup = Group("Prüfergebnis des tatsächlichen Zugriffs", 267);
             TableLayoutPanel result = Grid(1, 2); result.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             result.RowStyles.Add(new RowStyle(SizeType.Percent, 55)); result.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
@@ -322,7 +359,83 @@ namespace EinfachNetzwerk
                 : "Mit Passwort: Verwende den Netzwerk-Benutzer und das Passwort des Zielcomputers, z. B. COMPUTER\\Netzwerk. Eine Windows-PIN ist kein Netzwerk-Passwort.");
         }
         private void ClearVerifiedConnection() { verified = namedVerified = false; verifiedPath = verifiedComputerPath = verifiedContextKey = null; }
-        private void InvalidateVerifiedConnection() { if (busy || repairSequence) return; inputRevision++; ClearVerifiedConnection(); open.Enabled = openComputer.Enabled = false; if (repairSuggestion != null) repairSuggestion.Visible = false; ScheduleAutomaticCheck(); }
+        private void InvalidateVerifiedConnection() { if (busy || repairSequence || closingDiscovery || Disposing || IsDisposed) return; inputRevision++; ClearVerifiedConnection(); ResetConnectionSummary(); open.Enabled = openComputer.Enabled = false; if (repairSuggestion != null) repairSuggestion.Visible = false; ScheduleAutomaticCheck(); }
+        private void ResetConnectionSummary()
+        {
+            if (connectionSummaryGrid == null || closingDiscovery || Disposing || IsDisposed) return;
+            connectionSummary = ConnectionSummaryEvidence.Unknown(CurrentConnectionContext());
+            summaryBeforeOperation = null; RenderConnectionSummary();
+        }
+        private void RenderConnectionSummary()
+        {
+            if (connectionSummary == null || summaryValues == null) return;
+            connectionSummaryGroup.Text = I18n.T("Verbindung auf einen Blick");
+            string[] titles = { "Dieser PC vorbereitet", "Anderer Computer erreichbar", "Ordnerzugriff bestätigt" };
+            ConnectionSummaryState[] states = { connectionSummary.Local, connectionSummary.Computer, connectionSummary.Folder };
+            string[] hints = { connectionSummary.LocalHint, connectionSummary.ComputerHint, connectionSummary.FolderHint };
+            for (int index = 0; index < titles.Length; index++)
+            {
+                summaryHeadings[index].Text = I18n.T(titles[index]);
+                string state = states[index] == ConnectionSummaryState.Unchecked ? "Noch nicht geprüft"
+                    : states[index] == ConnectionSummaryState.Confirmed ? (index == 0 ? "Vorbereitung bestätigt" : index == 1 ? "Computer antwortet" : "Ordnerzugriff funktioniert")
+                    : index == 0 ? "Vorbereitung fehlt" : index == 1 ? "Computer antwortet nicht" : "Ordnerzugriff fehlgeschlagen";
+                summaryValues[index].Text = I18n.T(state) + "\r\n" + I18n.T(hints[index]);
+                summaryValues[index].AccessibleName = I18n.T(titles[index]);
+                summaryValues[index].AccessibleDescription = summaryValues[index].Text;
+                summaryValues[index].ForeColor = SystemInformation.HighContrast ? SystemColors.WindowText
+                    : states[index] == ConnectionSummaryState.Confirmed ? Color.FromArgb(32, 110, 60)
+                    : states[index] == ConnectionSummaryState.Problem ? Color.FromArgb(174, 49, 40) : AeroTheme.Ink;
+            }
+            FitConnectionSummary();
+        }
+        private void FitConnectionSummary()
+        {
+            if (fittingConnectionSummary || closingDiscovery || Disposing || IsDisposed || connectionSummaryGroup == null || connectionSummaryGrid == null || summaryValues == null) return;
+            fittingConnectionSummary = true;
+            connectionSummaryGrid.SuspendLayout(); connectionSummaryGroup.SuspendLayout();
+            try
+            {
+                int width = Math.Max(200, connectionSummaryGroup.DisplayRectangle.Width);
+                int height = 0;
+                for (int index = 0; index < summaryValues.Length; index++)
+                {
+                    int headingWidth = Math.Max(60, (int)(width * .34) - summaryHeadings[index].Margin.Horizontal - 4);
+                    int valueWidth = Math.Max(80, (int)(width * .66) - summaryValues[index].Margin.Horizontal - 4);
+                    // The scroll container can finish docking the grid after
+                    // the outer GroupBox size event. Until then reserve enough
+                    // height for the narrower actual label width as well.
+                    if (summaryHeadings[index].ClientSize.Width > 60) headingWidth = Math.Min(headingWidth, summaryHeadings[index].ClientSize.Width - 4);
+                    if (summaryValues[index].ClientSize.Width > 80) valueWidth = Math.Min(valueWidth, summaryValues[index].ClientSize.Width - 4);
+                    Size heading = TextRenderer.MeasureText(summaryHeadings[index].Text, summaryHeadings[index].Font, new Size(headingWidth, 10000), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                    Size value = TextRenderer.MeasureText(summaryValues[index].Text, summaryValues[index].Font, new Size(valueWidth, 10000), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                    int rowHeight = Math.Max(heading.Height, value.Height) + summaryValues[index].Margin.Vertical + 6;
+                    connectionSummaryGrid.RowStyles[index].Height = rowHeight; height += rowHeight;
+                }
+                // GroupBox.DisplayRectangle includes the native caption inset
+                // in addition to Padding. Batch row changes to avoid reentrant
+                // table layout when the group grows or gains a scrollbar.
+                int required = height + connectionSummaryGroup.Height - connectionSummaryGroup.DisplayRectangle.Height + 4;
+                if (connectionSummaryGroup.Height != required) connectionSummaryGroup.Height = required;
+                connectionSummaryGrid.Bounds = connectionSummaryGroup.DisplayRectangle;
+            }
+            finally
+            {
+                connectionSummaryGroup.ResumeLayout(true); connectionSummaryGrid.ResumeLayout(true);
+                fittingConnectionSummary = false;
+            }
+        }
+        private void ApplyConnectionSummary(WorkerResult result, ShareRequest request, string action)
+        {
+            string context = CurrentConnectionContext();
+            bool localAction = action == "InspectClient" || action == "PrepareClient";
+            bool selectionMatches = request != null && String.Equals(request.Mode, guest.Checked ? "Guest" : "Password", StringComparison.OrdinalIgnoreCase) &&
+                (localAction || (String.Equals(request.RemoteHost, targetHost.Text.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                    String.Equals(request.RemoteUserName ?? String.Empty, user.Text.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                    (action == "EnumerateComputer" || String.Equals(request.RemoteShareName, targetShare.Text.Trim(), StringComparison.OrdinalIgnoreCase))));
+            bool fresh = !preview && selectionMatches && (activeSummaryContext == null || String.Equals(activeSummaryContext, context, StringComparison.Ordinal));
+            connectionSummary = ConnectionSummaryEvidence.Evaluate(result, request, action, context, sourceComputer, fresh, summaryBeforeOperation ?? connectionSummary);
+            RenderConnectionSummary(); connectionSummaryGroup.Visible = true; FitConnectionSummary();
+        }
         private string CurrentConnectionContext()
         {
             string value = targetHost.Text.Trim() + "\0" + targetShare.Text.Trim() + "\0" + user.Text.Trim() + "\0" +
@@ -747,6 +860,9 @@ namespace EinfachNetzwerk
                     if (execute == null) throw new InvalidOperationException(I18n.T("Die Netzwerkaktion ist derzeit nicht verfügbar."));
                     request = CreateRequest(action);
                     enumerationProof = enumeration ? CaptureEnumerationProof(request) : null;
+                    activeSummaryContext = CurrentConnectionContext();
+                    summaryBeforeOperation = connectionSummary;
+                    connectionSummary = ConnectionSummaryEvidence.Unknown(activeSummaryContext); RenderConnectionSummary();
                     SetBusy(true);
                     WorkerResult result = await execute(request, Phase, delegate(WorkProgress value) { if (!IsDisposed) presenter.Report(value); });
                     if (result == null) throw new InvalidOperationException(I18n.T("Windows hat kein Prüfergebnis geliefert."));
@@ -760,6 +876,7 @@ namespace EinfachNetzwerk
                 catch (Exception error)
                 {
                     presenter.Stop(); ClearVerifiedConnection();
+                    ResetConnectionSummary(); connectionSummaryGroup.Visible = true;
                     DiagnosticReports.Current.RecordException(action, error, request);
                     status.Text = I18n.Format("Nicht abgeschlossen: {0}", error.Message);
                     status.ForeColor = SystemInformation.HighContrast ? SystemColors.WindowText : Color.FromArgb(174, 49, 40);
@@ -773,7 +890,7 @@ namespace EinfachNetzwerk
                     ((AeroButton)repair).Primary = ((AeroButton)serviceRepair).Primary = false;
                     scroll.ScrollControlIntoView(problemNotice);
                 }
-                finally { enumerationProof = null; if (request != null) request.ProtectedPassword = null; SetBusy(false); }
+                finally { enumerationProof = null; activeSummaryContext = null; summaryBeforeOperation = null; if (request != null) request.ProtectedPassword = null; SetBusy(false); }
             }
         }
         private void Phase(string text) { if (!IsDisposed) status.Text = I18n.TranslatePhase(text); }
@@ -857,8 +974,39 @@ namespace EinfachNetzwerk
             problemNotice.Text = problemHistory.Notice(); problemNotice.Visible = problemHistory.HasProblems;
             problemNotice.ForeColor = SystemInformation.HighContrast ? SystemColors.WindowText : problemHistory.HasUnresolved ? Color.FromArgb(153, 89, 29) : AeroTheme.Ink;
             ProblemHistory.SelectFirstProblem(checks);
+            ApplyConnectionSummary(result, request, action);
             resultGroup.Visible = true;
-            scroll.ScrollControlIntoView(hasRepairSuggestion ? (Control)repairSuggestion : resultGroup);
+            ScrollToConnectionResult();
+            // Showing a result changes the AutoSize stack and its scroll range.
+            // Bring the same result into view again after that layout settles.
+            string resultContext = CurrentConnectionContext();
+            if (IsHandleCreated && !closingDiscovery && !Disposing && !IsDisposed)
+                try { BeginInvoke((Action)delegate {
+                    if (!closingDiscovery && !Disposing && !IsDisposed && Object.ReferenceEquals(lastResult, result) &&
+                        String.Equals(resultContext, CurrentConnectionContext(), StringComparison.Ordinal)) ScrollToConnectionResult();
+                }); }
+                catch (InvalidOperationException) { if (!closingDiscovery && !Disposing && !IsDisposed) throw; }
+        }
+        private void ScrollToConnectionResult()
+        {
+            Control target = hasRepairSuggestion ? (Control)repairSuggestion : connectionSummaryGroup;
+            // After completing a check, move keyboard focus to its next action.
+            // Otherwise WinForms keeps scrolling back to the formerly focused
+            // input whenever the result changes the AutoSize layout.
+            if (!busy && ActiveControl != null && scroll.Contains(ActiveControl))
+            {
+                Control nextAction = hasRepairSuggestion ? (Control)suggestedRepair : verified ? (Control)open : check;
+                if (nextAction.Enabled) ActiveControl = nextAction;
+            }
+            if (target.Parent != null) target.Parent.PerformLayout();
+            scroll.PerformLayout();
+            // Derive the stack position in managed coordinates. Native
+            // ScrollControlIntoView can use stale descendant window positions
+            // while a formerly hidden card is joining this AutoSize stack.
+            int top = target.Top; Control parent = target.Parent;
+            while (parent != null && parent != scroll) { top += parent.Top; parent = parent.Parent; }
+            if (parent == scroll)
+                scroll.AutoScrollPosition = new Point(Math.Max(0, -scroll.AutoScrollPosition.X), Math.Max(0, top - scroll.AutoScrollPosition.Y));
         }
         private void PopulateEnumeratedShares(WorkerResult result, ShareRequest request)
         {
@@ -989,7 +1137,7 @@ namespace EinfachNetzwerk
         }
         private void LanguageChanged(object sender, EventArgs args)
         {
-            I18n.Apply(this); UpdateSource(); UpdateMode();
+            I18n.Apply(this); UpdateSource(); UpdateMode(); RenderConnectionSummary();
             fillingSelection = true;
             try
             {

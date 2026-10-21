@@ -15,8 +15,8 @@ using Microsoft.Win32.SafeHandles;
 [assembly: AssemblyDescription("Ordner und Datenlaufwerke einfach im Heimnetz freigeben")]
 [assembly: AssemblyCompany("Rene Box")]
 [assembly: AssemblyProduct("Einfach Netzwerk")]
-[assembly: AssemblyVersion("2.0.19.0")]
-[assembly: AssemblyFileVersion("2.0.19.0")]
+[assembly: AssemblyVersion("2.0.20.0")]
+[assembly: AssemblyFileVersion("2.0.20.0")]
 
 namespace EinfachNetzwerk
 {
@@ -86,7 +86,7 @@ namespace EinfachNetzwerk
         private static void FindPasswordValues(Control control, List<string> values)
         {
             TextBox input = control as TextBox;
-            if (input != null && (input.UseSystemPasswordChar || input.PasswordChar != '\0') && !String.IsNullOrEmpty(input.Text)) values.Add(input.Text);
+            if (input != null && (input.UseSystemPasswordChar || input.PasswordChar != '\0' || String.Equals(input.Name, "NetworkPassword", StringComparison.Ordinal)) && !String.IsNullOrEmpty(input.Text)) values.Add(input.Text);
             foreach (Control child in control.Controls) FindPasswordValues(child, values);
         }
         private static int RunWorker(string requestPath, string resultPath)

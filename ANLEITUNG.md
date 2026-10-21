@@ -1,6 +1,12 @@
-# Einfach Netzwerk 2.0.19
+# Einfach Netzwerk 2.0.20
 
 Ein kleines Windows-Programm für Ordner und ganze Datenfestplatten im Heimnetz. Die einzelne EXE enthält den Assistenten, alle sieben Sprachen und die Windows-Module für Freigaben und den Zugriff auf andere PCs.
+
+**Neu in 2.0.20:** Der Assistent startet weiterhin mit **Ohne Passwort**. Passwortzugang und ein selbst eingegebenes oder freiwillig erzeugtes Netzwerk-Passwort bleiben frei wählbar. Neue Freigaben beginnen mit **Nur lesen**. Der sichtbare Hinweis erklärt, dass Geräte Dateien öffnen und kopieren, aber noch nicht bearbeiten, hinzufügen oder löschen dürfen. Diese zusätzlichen Rechte lassen sich direkt einschalten und wieder ausschalten. Bereits gespeicherte Freigaberechte werden beim Reparieren beibehalten.
+
+Im Passwortmodus stehen **Passwort erzeugen**, **Anzeigen** und **Kopieren** zur Verfügung. Eine Erzeugung erfolgt nur auf deinen Klick; die Auswahl wechselt dabei nicht automatisch vom Gastmodus zum Passwortmodus. Das Passwort wird nicht in Verbindungsangaben oder TXT-Berichte übernommen.
+
+**Andere Computer** fasst die aktuelle Prüfung in drei klaren Zeilen zusammen: **Dieser PC vorbereitet**, **Anderer Computer erreichbar** und **Ordnerzugriff bestätigt**. Ein lokal vorbereiteter PC oder ein offener Port gilt weiterhin nicht als bestätigter Ordnerzugriff. Änderungen an Ziel, Freigabe oder Anmeldung verwerfen alte Verbindungsnachweise. Die vorhandene passende Reparaturaktion und die vollständigen Fehlerdetails bleiben erreichbar. Beim Programmstart wird weiterhin nicht gesucht.
 
 **Neu in 2.0.19:** Nach „Alles zurücksetzen“ sind die gesicherten ursprünglichen Windows-Einstellungen wieder aktiv. Dadurch können Gastanmeldungen erneut gesperrt sein. Die konkreten Hinweise zu Gastzugriff und SMB-Signatur bleiben jetzt als behebbare Einstellungen sichtbar; eine zusätzliche allgemeine Fehlermeldung verdeckt sie nicht mehr.
 
@@ -228,4 +234,4 @@ Prüfbericht: `VERIFICATION.md`. Selbsttest, Vorschau und Probeläufe richten ke
 
 Grundlagen: [SMB-Gastzugang](https://learn.microsoft.com/en-us/windows-server/storage/file-server/enable-insecure-guest-logons-smb2-and-smb3), [SMB-Signaturen](https://learn.microsoft.com/en-us/windows-server/storage/file-server/smb-signing), [Netzwerkerkennung](https://learn.microsoft.com/en-us/windows-server/storage/file-server/troubleshoot/smbv1-not-installed-by-default-in-windows), [Computername ändern](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/rename-computer).
 
-Version 2.0.19 · Rene Box
+Version 2.0.20 · Rene Box

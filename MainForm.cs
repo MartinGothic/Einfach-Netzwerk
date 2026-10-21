@@ -23,13 +23,13 @@ namespace EinfachNetzwerk
         private ComboBox drives, networks, existingShares, deviceHelp;
         private RadioButton guestMode, passwordMode;
         private CheckBox allowWrite, allowDrive, allowGuest, advancedRepair, animations;
-        private Label driveHint, accessHint, networkHint, resultTitle, resultMessage, checkDetail, helpText, status;
+        private Label driveHint, accessHint, writeAccessHint, networkHint, resultTitle, resultMessage, checkDetail, helpText, status;
         private ListView checks;
         private ProgressBar progress;
         private Label progressPercent;
         private Button applyButton, checkButton, repairButton, removeButton, restoreButton, copyButton, openButton;
         private Control settingsPanel, credentialPanel;
-        private bool busy, loading, automaticName = true, wizardApproved, drivesLoaded;
+        private bool busy, loading, automaticName = true, wizardApproved, drivesLoaded, translatingInterface;
         private Button wizardButton, advancedButton, renameButton, overviewButton, reportButton, remoteButton, receiverRepairButton, resultLink, errorFixButton;
         private Panel homeScroll;
         private ComboBox languages;
@@ -283,7 +283,12 @@ namespace EinfachNetzwerk
             UpdateNetworkHint();
             UpdateDeviceHelp();
             UpdateProgressHint();
-            if (lastRawResult != null) ShowResult(lastRawResult);
+            if (lastRawResult != null)
+            {
+                translatingInterface = true;
+                try { ShowResult(lastRawResult); }
+                finally { translatingInterface = false; }
+            }
             if (!preview) RefreshProblemNotice();
         }
 
@@ -653,6 +658,7 @@ namespace EinfachNetzwerk
             existingShares.SelectedIndex = 0;
             existingShares.SelectedIndexChanged += delegate
             {
+                if (translatingInterface) return;
                 ShareChoice chosen = existingShares.SelectedItem as ShareChoice;
                 if (chosen == null) return;
                 loading = true;
@@ -702,8 +708,11 @@ namespace EinfachNetzwerk
             credentials.Controls.Add(userName, 0, 1);
             credentials.Controls.Add(password, 1, 1);
             card.Controls.Add(credentials);
-            allowWrite = new CheckBox { Text = "Dateien bearbeiten, hinzufügen und löschen erlauben", Checked = true, AutoSize = true, Dock = DockStyle.Top, Margin = new Padding(0, 13, 0, 0) };
+            writeAccessHint = Paragraph(String.Empty, card);
+            card.Controls.Add(writeAccessHint);
+            allowWrite = new CheckBox { Text = "Dateien bearbeiten, hinzufügen und löschen erlauben", Checked = false, AutoSize = true, Dock = DockStyle.Top, Margin = new Padding(0, 7, 0, 0) };
             card.Controls.Add(allowWrite);
+            allowWrite.CheckedChanged += delegate { UpdateWriteAccessHint(); };
             advancedRepair = new CheckBox { Text = I18n.T("Zugriffsblockaden automatisch beheben"), Checked = true, AutoSize = true, Dock = DockStyle.Top, Margin = new Padding(0, 9, 0, 0) };
             card.Controls.Add(advancedRepair);
             card.Controls.Add(Paragraph("Die Reparatur prüft Dateirechte, Netzwerkbindung und Windows-Zugriffssperren für deine Auswahl. Sie sichert Änderungen und prüft danach erneut.", card));
@@ -920,6 +929,15 @@ namespace EinfachNetzwerk
             accessHint.Text = I18n.T(usePassword
                 ? "Das Programm richtet ein eigenes lokales Netzwerk-Konto ein. Verwende auf anderen Geräten dieses Passwort, keine Windows-PIN."
                 : "Gastmodus verändert das Gastkonto und lockert die eingehende SMB-Signaturpflicht für diesen PC. Alle Geräte im gewählten Heimnetz erhalten die gewählten Rechte. Manche Geräte erlauben keinen Gastzugang.");
+            UpdateWriteAccessHint();
+        }
+
+        private void UpdateWriteAccessHint()
+        {
+            if (writeAccessHint == null || allowWrite == null) return;
+            writeAccessHint.Text = I18n.T(allowWrite.Checked
+                ? "Bearbeiten und Löschen erlaubt. Für Nur lesen die Option unten deaktivieren."
+                : "Nur lesen: Öffnen und Kopieren sind erlaubt. Möchtest du auch bearbeiten und löschen?");
         }
 
         private void UpdateNetworkHint()
@@ -1179,7 +1197,7 @@ namespace EinfachNetzwerk
             ResizeCheckColumns();
             if (result.Networks != null) LoadNetworks(result.Networks);
             if (result.Shares != null) LoadShares(result.Shares);
-            SelectDiscoveryRepairTarget();
+            if (!translatingInterface) SelectDiscoveryRepairTarget();
             string hostAddress = result.Address;
             if (String.IsNullOrWhiteSpace(hostAddress)) { NetworkChoice selected = networks.SelectedItem as NetworkChoice; if (selected != null) hostAddress = selected.Item.Address; }
             host.Text = String.IsNullOrWhiteSpace(hostAddress) ? "—" : hostAddress;
