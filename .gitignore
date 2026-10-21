@@ -22,3 +22,5 @@ github-upload-*/
 *.bak
 *.user
 *.suo
+__pycache__/
+*.py[cod]
